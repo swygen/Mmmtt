@@ -1,4 +1,3 @@
-import os
 import random
 import logging
 from datetime import datetime
@@ -11,10 +10,6 @@ from telegram.ext import (
     ContextTypes, filters, ConversationHandler
 )
 
-# Environment variables (optional, if needed)
-TOKEN = "7343006860:AAEzZkUuwM_3nfXWqyMG6ZORnlrYvmtewcI"  # Add your bot token here
-ADMIN_ID = 6243881362  # Add your admin ID here
-
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
@@ -24,34 +19,16 @@ logger = logging.getLogger(__name__)
 captcha_codes = {}
 WITHDRAW_AMOUNT, WITHDRAW_METHOD, WITHDRAW_NUMBER = range(3)
 
-# Memory storage for user data
-users_data = {}
-
-# Utility functions
+# Utility
 async def send_typing(context):
     await context.bot.send_chat_action(chat_id=context.effective_chat.id, action=ChatAction.TYPING)
-
-async def get_or_create_user(user):
-    # Create a new user in memory if not exists
-    if user.id not in users_data:
-        users_data[user.id] = {
-            "name": user.full_name,
-            "id": user.id,
-            "balance": 0,
-            "joined": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "ref": None,
-            "ref_count": 0,
-            "team": [],
-        }
-    return users_data[user.id]
 
 # Start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    await get_or_create_user(user)
     code = random.randint(1000, 9999)
     captcha_codes[user.id] = str(code)
-    keyboard = InlineKeyboardButton(str(code), callback_data=f"captcha:{code}")
+    keyboard = [[InlineKeyboardButton(str(code), callback_data=f"captcha:{code}")]]
     await update.message.reply_text("CAPTCHA: নিচের সংখ্যাটি নির্বাচন করুন:",
                                     reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -72,7 +49,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             new_code = str(random.randint(1000, 9999))
             captcha_codes[user.id] = new_code
-            keyboard = InlineKeyboardButton(new_code, callback_data=f"captcha:{new_code}")
+            keyboard = [[InlineKeyboardButton(new_code, callback_data=f"captcha:{new_code}")]]
             await query.edit_message_text("❌ ভুল হয়েছে। আবার চেষ্টা করুন:",
                                           reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -95,12 +72,11 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
-    user_data = users_data.get(user.id, {})
     text = (
-        f"👤 Name: {user_data['name']}\n"
-        f"🆔 User ID: {user_data['id']}\n"
-        f"💰 Balance: {user_data['balance']} ৳\n"
-        f"📅 Joined: {user_data['joined']}"
+        f"👤 Name: {user.full_name}\n"
+        f"🆔 User ID: {user.id}\n"
+        f"💰 Balance: 0৳\n"
+        f"📅 Joined: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     )
     await query.edit_message_text(text=text, parse_mode="Markdown")
 
@@ -109,9 +85,8 @@ async def refer_earn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
     ref_link = f"https://t.me/{context.bot.username}?start={user.id}"
-    user_data = users_data.get(user.id, {})
     msg = (
-        f"👤 Name: {user_data['name']}\n🆔 ID: {user.id}\n\n"
+        f"👤 Name: {user.full_name}\n🆔 ID: {user.id}\n\n"
         f"🔗 Your Referral Link:\n{ref_link}\n\n"
         "প্রতি সফল রেফারে ৫০ টাকা যোগ হবে। বেশি বেশি শেয়ার করুন!"
     )
@@ -121,10 +96,10 @@ async def refer_earn(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_team(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
-    user_data = users_data.get(user.id, {})
-    team = user_data.get("team", [])
+    # Since Firebase is removed, we are not storing the team data, so using a dummy list
+    team = ["User 1", "User 2"]  # This should be dynamically updated in a real bot
     member_list = "\n".join([f"- {m}" for m in team]) if team else "No members yet."
-    msg = f"👥 Team of {user_data['name']}\n👤 Total Referrals: {len(team)}\n\n{member_list}"
+    msg = f"👥 Team of {user.full_name}\n👤 Total Referrals: {len(team)}\n\n{member_list}"
     await query.edit_message_text(msg)
 
 # Earn Tips
@@ -153,16 +128,12 @@ async def tips_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Withdraw Conversation
 async def withdraw_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    user_data = users_data.get(query.from_user.id, {})
-    if user_data['balance'] < 1000:
-        await query.edit_message_text(f"❌ আপনার ব্যালেন্স {user_data['balance']}৳। উত্তোলন করতে আপনার প্রয়োজন ১০০০৳।")
-        return ConversationHandler.END
     await query.edit_message_text("উত্তোলনের পরিমাণ লিখুন (৳):")
     return WITHDRAW_AMOUNT
 
 async def withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['amount'] = int(update.message.text)
-    await update.message.reply_text("পেমেন্ট পদ্ধতি নির্বাচন করুন: বিকাশ / নগদ / রকেট / উপায়")
+    await update.message.reply_text("পেমেন্ট পদ্ধতি নির্বাচন করুন: বিকাশ / নগদ / রকেট / উপায়")
     return WITHDRAW_METHOD
 
 async def withdraw_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -171,15 +142,10 @@ async def withdraw_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return WITHDRAW_NUMBER
 
 async def withdraw_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
     number = update.message.text
     amount = context.user_data['amount']
     method = context.user_data['method']
-
-    # Update balance in memory
-    if user_id in users_data:
-        users_data[user_id]["balance"] -= amount
-
+    # As Firebase is removed, we won't update any database, this is a dummy response
     await update.message.reply_text(
         f"✅ উত্তোলনের অনুরোধ গ্রহণ করা হয়েছে।\n\nমেথড: {method}\nনাম্বার: {number}\nপরিমাণ: {amount}৳\n\nঅপেক্ষা করুন।")
     return ConversationHandler.END
@@ -217,6 +183,10 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Main Function
 def main():
+    # Set your BOT_TOKEN and ADMIN_ID here
+    TOKEN = "7343006860:AAEzZkUuwM_3nfXWqyMG6ZORnlrYvmtewcI"
+    ADMIN_ID = 6243881362
+
     app = Application.builder().token(TOKEN).build()
 
     withdraw_conv = ConversationHandler(
